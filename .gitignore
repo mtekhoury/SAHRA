@@ -1,0 +1,4 @@
+# compiled classes
+bin/
+# holds your MySQL password - never upload it
+config.properties
