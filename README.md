@@ -1,51 +1,88 @@
-# SAHRA – Group Night-Out Decision System
+# SAHRA
 
-COE 418 Database Systems project. Java Swing app + MySQL database.
+Every time my friends try to go out, the same thing happens: someone asks "where are we going?", the group chat explodes with 40 suggestions, nobody agrees, and we end up at the same place as last time.
 
-A group of friends creates a **SAHRA** (a night-out plan) and picks filters: activity type, area, atmosphere and a budget range. SAHRA searches the database for matching places and the group votes. The place with the most votes wins. If nothing matches, SAHRA shows the closest places, starting from the group's **minimum** budget.
+SAHRA is a small desktop app that fixes that. You start a "SAHRA" (night out) with your group, pick what you're in the mood for and how much you want to spend, the app pulls the places that match from the database, and everyone votes. Most votes wins. Done.
 
-## Folder contents
+Made for **COE 418 – Database Systems** at LAU (Fall 2026).
 
-| Path | What it is |
+![Voting screen](docs/screenshots/voting.png)
+
+## What you can do
+
+- Sign up / log in
+- Make friend groups and add people by their email
+- Plan a SAHRA by picking:
+  - **what**: restaurant, cinema, party, concert, karting, paintball, bowling or escape room
+  - **where**: Beirut, Jounieh, Byblos or Batroun
+  - **the vibe**: chill, lively or fancy
+  - **a budget range** per person (e.g. $15 to $30)
+- See the places that match and vote. You can change your vote until whoever created the SAHRA closes voting.
+- Browse all places, filter them any way you want, and add / edit / delete them.
+
+### When nothing matches
+
+This was the part I cared about most. If you ask for a chill restaurant in Byblos for $15 to $25 and there isn't one, the app doesn't just say "no results". It keeps the type you asked for, tries to stay in the same area, then the same vibe, and ranks what's left by how close the price is to your **minimum** budget. That way the backup options never end up being more expensive than what the group agreed on. These show up as "Closest option" so people know they're not exact matches.
+
+![Fallback results after voting closed](docs/screenshots/fallback-decided.png)
+
+## Screenshots
+
+| Groups and their SAHRAs | Planning a night out |
 |---|---|
-| `sql/schema.sql` | Creates the `sahra` database and every table from the LDM |
-| `sql/sample_data.sql` | Test users, groups, 34 activities, 3 example SAHRAs with votes |
-| `sql/queries.sql` | Test queries for the report (selection, projection, joins, GROUP BY, fallback, insert/update/delete, constraint tests) |
-| `src/sahra/Main.java` | Starts the app |
-| `src/sahra/db/` | All database code (JDBC + SQL) |
-| `src/sahra/ui/` | All screens (Swing). `Theme.java` holds the colors, fonts and custom-drawn components |
-| `lib/` | MySQL driver (Connector/J `.jar`) and FlatLaf (`flatlaf-x.x.jar`, the modern look) |
-| `config.properties` | Your MySQL password (not uploaded to GitHub) |
+| ![Groups](docs/screenshots/groups.png) | ![Plan a SAHRA](docs/screenshots/plan-sahra.png) |
 
-## How to run
+| Explore places | Login |
+|---|---|
+| ![Explore places](docs/screenshots/explore.png) | ![Login](docs/screenshots/login.png) |
 
-### 1. Create the database (once)
-1. Open **MySQL Workbench** and connect to your local server.
-2. **File → Open SQL Script** → `sql/schema.sql` → click the **lightning bolt** (Execute all).
-3. Do the same for `sql/sample_data.sql`.
-4. In the left "Schemas" panel, click refresh. You should see `sahra` with its tables.
+## How it's built
 
-To reset everything later, run both files again.
+- **Java** (17+) with **Swing** for the interface and **FlatLaf** for the dark theme
+- **MySQL** for the database, connected with plain **JDBC** (MySQL Connector/J)
+- No frameworks. The database code is in a few DAO classes (`src/sahra/db`) that use prepared statements, and the screens are in `src/sahra/ui`.
 
-### 2. Put your MySQL password in the config (once)
-Open `config.properties` and replace `PUT_YOUR_MYSQL_PASSWORD_HERE` with your MySQL root password. Save.
+Since this is a databases course, most of the work went into the schema:
 
-### 3. Run the app
-Open `src/sahra/Main.java` in VS Code and click **Run** above `public static void main`. You can also press **F5**.
+- 15 tables. `activity` is a supertype and each kind of place (restaurant, cinema, party...) has its own subtype table with its own columns, linked 1:1.
+- A vote can only point to a place that was actually suggested for that SAHRA. `vote` has a composite foreign key to `event_result(eventID, activityID)`, so this is enforced by the database, not just the app.
+- One vote per person per SAHRA: `UNIQUE (eventID, userID)` on `vote`.
+- `CHECK` constraints for things like valid areas and vibes, `minBudget <= maxBudget`, no negative prices, and concert tickets going on sale before the concert.
+- `ON DELETE CASCADE` where it makes sense (delete a group and its SAHRAs go with it), and the default restrict where history should be kept (you can't delete a place that was already picked as a winner).
+- Creating a SAHRA (save it, search, save the results) and voting both run inside transactions.
+- Passwords are stored as SHA-256 hashes, not plain text.
 
-Log in with **maria@sahra.com / 1234**. Every test account uses password `1234`: maria, karim, lea, omar, nour and jad, all `@sahra.com`.
+`sql/queries.sql` has all the test queries we ran for the report: selections, projections, AND/OR conditions, multi-table joins, GROUP BY / COUNT / HAVING, subqueries, insert/update/delete, and a few that are *supposed* to fail so you can see the constraints doing their job.
 
-## Things to try (good for the demo)
-- **My groups & SAHRAs** → "LAU Squad" → open **Saturday SAHRA** → vote, then log in as another member and vote.
-- **New SAHRA** → Restaurant, Beirut, Lively, $15–$30 → exact matches.
-- **New SAHRA** → Restaurant, Byblos, Chill, $15–$25 → no exact match, so fallback results appear.
-- **Close voting & pick winner**: only the SAHRA's creator can do this.
-- **Browse & manage activities** → filter by any combination, then add, edit or delete an activity. Try deleting "Jounieh Bowl": it's a decided SAHRA's final choice, so the foreign key blocks the delete.
+```
+SAHRA/
+├── sql/
+│   ├── schema.sql        tables, keys, constraints, a view
+│   ├── sample_data.sql   test users, groups, 34 places, 3 SAHRAs
+│   └── queries.sql       test queries
+├── src/sahra/
+│   ├── Main.java
+│   ├── db/               JDBC + all the SQL the app runs
+│   └── ui/               the screens
+├── lib/                  MySQL driver + FlatLaf
+└── config.example.properties
+```
 
-## Database rules (constraints) used
-- Primary keys on every table; composite keys on `group_member`, `event_result`, `vote`
-- Foreign keys with `ON DELETE CASCADE` where child rows should disappear with the parent, and the default `RESTRICT` where history must be kept
-- `UNIQUE` email; `UNIQUE (eventID, userID)` in `vote` = one vote per person per SAHRA
-- `vote (eventID, activityID)` → `event_result`: you can only vote for a proposed place
-- `CHECK`: allowed areas, atmospheres, types and statuses; `minBudget <= maxBudget`; prices ≥ 0; concert ticket sales before the concert date
-- Passwords stored as SHA-256 hashes
+## Running it yourself
+
+You'll need Java 17 or newer, MySQL 8+ and MySQL Workbench.
+
+1. In MySQL Workbench, open and run `sql/schema.sql`, then `sql/sample_data.sql`.
+2. Copy `config.example.properties`, rename the copy to `config.properties`, and put your MySQL password in it. (This file is in `.gitignore`, so your password never gets pushed.)
+3. Open the folder in VS Code (with the Java extension pack) and run `src/sahra/Main.java`.
+
+Log in with `maria@sahra.com` / `1234`. All the test accounts use `1234`.
+
+## What I'd add next
+
+- A phone or web version. Realistically that's where people would actually vote.
+- Notifying everyone when voting closes
+- Making the fallback smarter, e.g. if there's nothing in Byblos, try Jounieh or Batroun before jumping all the way to Beirut
+- Reservations straight from the app
+
+The venues in the sample data are made up, and so are their prices.
